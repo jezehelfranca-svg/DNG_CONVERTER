@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+venv/
+ENV/
+
+# Temporary and upload workspaces
+workspace_uploads/
+Converted_JPEG/
+.tmp*
+*.tmp
+
+# Raw assets and converted outputs
+*.dng
+*.DNG
+*.jpg
+*.jpeg
+*.zip
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

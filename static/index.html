@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DNG to High-Quality JPEG Studio</title>
+<style>
+:root { --bg:#0b0f19; --card:#131a2a; --inp:#0e1422; --bdr:#26324d; --acc:#6366f1; --ok:#10b981; --err:#ef4444; --txt:#f1f5f9; --mut:#94a3b8; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:system-ui,-apple-system,sans-serif; background:radial-gradient(circle at top right,#1e1b4b 0%,var(--bg) 45%); color:var(--txt); min-height:100vh; }
+header { border-bottom:1px solid var(--bdr); background:rgba(19,26,42,.9); padding:14px 24px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:50; }
+.brand { display:flex; align-items:center; gap:12px; }
+.logo { width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center; font-weight:800; }
+.badges { display:flex; gap:8px; flex-wrap:wrap; }
+.badge { font-size:.75rem; padding:4px 10px; border-radius:99px; background:var(--inp); border:1px solid var(--bdr); color:var(--mut); }
+.badge.ok { border-color:rgba(16,185,129,.4); color:#6ee7b7; background:rgba(16,185,129,.1); }
+.wrap { max-width:1400px; margin:20px auto; padding:0 20px; display:grid; grid-template-columns:410px 1fr; gap:20px; }
+@media(max-width:980px){ .wrap { grid-template-columns:1fr; } }
+.card { background:var(--card); border:1px solid var(--bdr); border-radius:12px; padding:18px; margin-bottom:18px; }
+.title { font-size:.95rem; font-weight:600; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+.tabs { display:grid; grid-template-columns:1fr 1fr; gap:6px; background:var(--inp); padding:4px; border-radius:8px; border:1px solid var(--bdr); margin-bottom:14px; }
+.tab { background:transparent; color:var(--mut); border:none; padding:8px; border-radius:6px; font-weight:600; cursor:pointer; }
+.tab.active { background:var(--acc); color:#fff; }
+.grp { margin-bottom:12px; }
+.grp label { display:block; font-size:.78rem; color:var(--mut); margin-bottom:5px; }
+.row { display:flex; gap:8px; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+input[type="text"], select { width:100%; background:var(--inp); border:1px solid var(--bdr); color:var(--txt); padding:8px 10px; border-radius:7px; font-size:.85rem; }
+input[type="range"] { width:100%; accent-color:var(--acc); cursor:pointer; }
+.btn { background:var(--inp); border:1px solid var(--bdr); color:var(--txt); padding:8px 12px; border-radius:7px; font-size:.82rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; text-decoration:none; }
+.btn:hover:not(:disabled) { border-color:#4f6396; background:#192236; }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.btn-pri { background:linear-gradient(135deg,#6366f1,#4f46e5); border-color:transparent; color:#fff; }
+.btn-ok { background:linear-gradient(135deg,#10b981,#059669); border-color:transparent; color:#fff; }
+.btn-err { background:rgba(239,68,68,.15); border-color:rgba(239,68,68,.4); color:#fca5a5; }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.chip { font-size:.74rem; background:rgba(99,102,241,.12); border:1px solid rgba(99,102,241,.35); color:#c7d2fe; padding:4px 9px; border-radius:6px; cursor:pointer; }
+.drop { border:2px dashed var(--bdr); border-radius:10px; padding:26px 14px; text-align:center; background:var(--inp); cursor:pointer; }
+.drop.over { border-color:var(--acc); background:rgba(99,102,241,.1); }
+.chk { display:flex; align-items:center; gap:8px; font-size:.82rem; color:#cbd5e1; margin-top:7px; cursor:pointer; }
+.qbox { max-height:250px; overflow-y:auto; border:1px solid var(--bdr); border-radius:8px; background:var(--inp); }
+table { width:100%; border-collapse:collapse; font-size:.8rem; }
+th, td { padding:8px 10px; text-align:left; border-bottom:1px solid rgba(38,50,77,.6); }
+th { background:#111827; color:var(--mut); position:sticky; top:0; }
+.pill { padding:2px 8px; border-radius:99px; font-size:.7rem; font-weight:600; background:rgba(148,163,184,.15); }
+.pill.done { background:rgba(16,185,129,.2); color:#6ee7b7; }
+.pill.work { background:rgba(99,102,241,.25); color:#a5b4fc; }
+.pill.err { background:rgba(239,68,68,.2); color:#fca5a5; }
+.pwrap { background:var(--inp); border:1px solid var(--bdr); border-radius:99px; height:12px; overflow:hidden; margin:10px 0; }
+.pbar { height:100%; width:0%; background:linear-gradient(90deg,#6366f1,#10b981); transition:width .2s; }
+.stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:10px; }
+.stat { background:var(--inp); border:1px solid var(--bdr); padding:8px; border-radius:8px; text-align:center; }
+.stat b { font-size:1.1rem; display:block; }
+.stat span { font-size:.7rem; color:var(--mut); }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px; margin-top:10px; }
+.item { background:var(--inp); border:1px solid var(--bdr); border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+.thumb { width:100%; height:145px; object-fit:cover; background:#070a12; cursor:zoom-in; }
+.meta { padding:9px; font-size:.76rem; display:flex; flex-direction:column; gap:6px; }
+.empty { text-align:center; padding:30px; color:var(--mut); font-size:.84rem; }
+.modal { position:fixed; inset:0; background:rgba(5,8,15,.92); display:none; align-items:center; justify-content:center; z-index:200; flex-direction:column; gap:12px; padding:20px; }
+.modal.open { display:flex; }
+.modal img { max-width:92vw; max-height:82vh; border-radius:8px; border:1px solid var(--bdr); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">DNG</div>
+    <div>
+      <h1 style="font-size:1.15rem;">DNG to High-Quality JPEG Studio</h1>
+      <p style="font-size:.76rem;color:var(--mut);">16-Bit RAW Development &bull; 4:4:4 Chroma &bull; Non-Destructive Batch Engine</p>
+    </div>
+  </div>
+  <div class="badges" id="badges"><span class="badge">Loading engines...</span></div>
+</header>
+
+<main class="wrap">
+  <section>
+    <div class="card">
+      <div class="title"><span>1. Source DNG Selection</span></div>
+      <div class="tabs">
+        <button class="tab active" id="tLocal" onclick="setMode('local')">Local Folder / Disk</button>
+        <button class="tab" id="tUpload" onclick="setMode('upload')">Drag &amp; Drop Upload</button>
+      </div>
+      <div id="pLocal">
+        <div class="grp">
+          <label>Native Windows Explorer Dialog</label>
+          <div class="g2">
+            <button class="btn" onclick="pickFolder()">📁 Browse Folder...</button>
+            <button class="btn" onclick="pickFiles()">🖼️ Select DNG Files...</button>
+          </div>
+        </div>
+        <div class="grp">
+          <label>Or Folder / File Path</label>
+          <div class="row">
+            <input type="text" id="pathInp" placeholder="C:\Users\...\Pictures\Insta360" />
+            <button class="btn btn-pri" onclick="scanPath()">Scan</button>
+          </div>
+          <label class="chk"><input type="checkbox" id="recChk" /> Include subfolders recursively</label>
+        </div>
+        <div class="grp" id="discWrap" style="display:none;">
+          <label>Detected DNG Folders on PC (Click to Load)</label>
+          <div class="chips" id="discList"></div>
+        </div>
+      </div>
+      <div id="pUpload" style="display:none;">
+        <div class="drop" id="drop" onclick="document.getElementById('fInp').click()">
+          <h4>Drop .DNG files here or click to browse</h4>
+          <p style="font-size:.76rem;color:var(--mut);margin-top:4px;">Files are converted locally at full resolution</p>
+          <input type="file" id="fInp" multiple accept=".dng,.DNG" style="display:none;" onchange="stageFiles(this.files)" />
+        </div>
+        <div id="upInfo" style="margin-top:8px;font-size:.8rem;color:#a5b4fc;"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title"><span>2. High-Quality Output Settings</span></div>
+      <div class="grp">
+        <label>RAW Processing Engine</label>
+        <select id="engSel">
+          <option value="magick">ImageMagick 7 (16-bit LibRaw Delegate)</option>
+          <option value="rawpy">Python LibRaw (rawpy + AHD Demosaic + Camera WB)</option>
+        </select>
+      </div>
+      <div class="grp">
+        <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px;">
+          <span>JPEG Quality</span><b id="qLbl" style="color:#818cf8;">98% (Near-Lossless)</b>
+        </div>
+        <input type="range" id="qRng" min="50" max="100" value="98" oninput="document.getElementById('qLbl').textContent=this.value+'%'" />
+      </div>
+      <div class="g2">
+        <div class="grp">
+          <label>Chroma Subsampling</label>
+          <select id="subSel"><option value="4:4:4">4:4:4 (Max Sharpness)</option><option value="4:2:2">4:2:2</option><option value="4:2:0">4:2:0</option></select>
+        </div>
+        <div class="grp">
+          <label>Color Profile</label>
+          <select id="csSel"><option value="sRGB">sRGB</option><option value="AdobeRGB">AdobeRGB</option></select>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="grp"><label>Output Subfolder</label><input type="text" id="outSub" value="Converted_JPEG" /></div>
+        <div class="grp">
+          <label>Parallel Workers</label>
+          <select id="wrkSel"><option value="1">1 Thread</option><option value="2">2 Threads</option><option value="3" selected>3 Threads</option><option value="4">4 Threads</option><option value="6">6 Threads</option></select>
+        </div>
+      </div>
+      <label class="chk"><input type="checkbox" id="oriChk" checked /> Auto-orient via camera EXIF rotation</label>
+      <label class="chk"><input type="checkbox" id="exifChk" checked /> Preserve camera EXIF metadata</label>
+      <div class="row" style="margin-top:16px;">
+        <button class="btn btn-pri" style="width:100%;padding:11px;" id="startBtn" onclick="startJob()">⚡ Convert DNG Batch to High-Quality JPEG</button>
+        <button class="btn btn-err" id="stopBtn" style="display:none;" onclick="cancelJob()">Stop</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <div class="title">
+        <span>DNG File Queue (<span id="qCnt">0</span> files)</span>
+        <div class="row"><button class="btn" onclick="selAll(true)">All</button><button class="btn" onclick="selAll(false)">None</button></div>
+      </div>
+      <div class="qbox">
+        <table>
+          <thead><tr><th style="width:32px;"></th><th>Filename</th><th>RAW Size</th><th>Status</th></tr></thead>
+          <tbody id="qBody"><tr><td colspan="4" class="empty">Select a folder, click a detected folder chip, or drop .dng files to begin.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title"><span>Batch Execution Telemetry</span><span id="stTxt" style="font-size:.78rem;color:var(--mut);">Idle</span></div>
+      <div class="pwrap"><div class="pbar" id="pBar"></div></div>
+      <div class="stats">
+        <div class="stat"><b id="sDone">0 / 0</b><span>Processed</span></div>
+        <div class="stat"><b id="sOk" style="color:#6ee7b7;">0</b><span>Succeeded</span></div>
+        <div class="stat"><b id="sErr" style="color:#fca5a5;">0</b><span>Failed</span></div>
+        <div class="stat"><b id="sTime">0.0s</b><span>Elapsed</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">
+        <span>Converted High-Quality JPEGs (<span id="gCnt">0</span>)</span>
+        <div class="row">
+          <button class="btn" id="openDirBtn" style="display:none;" onclick="openOutDir()">📂 Open Output Folder</button>
+          <button class="btn btn-ok" id="zipBtn" style="display:none;" onclick="dlZip()">⬇️ Download All ZIP</button>
+        </div>
+      </div>
+      <div id="gWrap"><div class="empty">Converted JPEGs will appear here in real time with preview and download options.</div></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal" onclick="if(event.target===this||event.target.tagName==='IMG')this.classList.remove('open')">
+  <img id="mImg" src="" />
+  <div class="row" style="background:var(--card);padding:8px 16px;border-radius:99px;border:1px solid var(--bdr);align-items:center;">
+    <span id="mTit" style="font-size:.84rem;font-weight:600;"></span>
+    <a id="mDl" class="btn btn-pri" download>⬇️ Download</a>
+    <button class="btn" onclick="document.getElementById('modal').classList.remove('open')">Close</button>
+  </div>
+</div><script>
+let mode='local', qFiles=[], uFiles=[], jobId=null, es=null, lastOut=null;
+const fmt = b => !b ? '0 B' : (b>=1048576 ? (b/1048576).toFixed(2)+' MB' : (b/1024).toFixed(1)+' KB');
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('tLocal').classList.toggle('active', m==='local');
+  document.getElementById('tUpload').classList.toggle('active', m==='upload');
+  document.getElementById('pLocal').style.display = m==='local' ? 'block' : 'none';
+  document.getElementById('pUpload').style.display = m==='upload' ? 'block' : 'none';
+  renderQ();
+}
+
+async function init() {
+  try {
+    const r = await fetch('/api/system-info');
+    const d = await r.json();
+    document.getElementById('badges').innerHTML = `
+      <span class="badge ${d.has_magick?'ok':''}">${d.has_magick?'✓ ImageMagick 7 Ready':'✗ ImageMagick'}</span>
+      <span class="badge ${d.has_rawpy?'ok':''}">${d.has_rawpy?'✓ Python LibRaw Ready':'✗ rawpy'}</span>
+      <span class="badge ok">⚡ ${d.cpu_count} Threads</span>
+    `;
+    if (d.discovered_folders && d.discovered_folders.length) {
+      document.getElementById('discWrap').style.display = 'block';
+      const box = document.getElementById('discList');
+      box.innerHTML = '';
+      d.discovered_folders.forEach(f => {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.title = f.path;
+        b.textContent = `📂 ${f.name} (${f.count} DNG)`;
+        b.onclick = () => { document.getElementById('pathInp').value = f.path; scanPath(); };
+        box.appendChild(b);
+      });
+    }
+  } catch (e) { console.error(e); }
+}
+
+async function pickFolder() {
+  const r = await fetch('/api/pick-folder', {method:'POST'});
+  const d = await r.json();
+  if (d.path) { document.getElementById('pathInp').value = d.path; scanPath(); }
+}
+
+async function pickFiles() {
+  const r = await fetch('/api/pick-files', {method:'POST'});
+  const d = await r.json();
+  if (d.files && d.files.length) {
+    document.getElementById('pathInp').value = d.files[0];
+    qFiles = d.files.map(p => ({ name: p.split(/[\\/]/).pop(), path: p, size_bytes: 0, sel: true, st: 'Ready' }));
+    renderQ();
+  }
+}
+
+async function scanPath() {
+  const path = document.getElementById('pathInp').value.trim();
+  if (!path) return alert('Enter or select a folder path first.');
+  const r = await fetch('/api/scan', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ path, recursive: document.getElementById('recChk').checked, output_subfolder: document.getElementById('outSub').value.trim()||'Converted_JPEG' })
+  });
+  const d = await r.json();
+  if (!r.ok) return alert(d.detail || 'Scan failed');
+  qFiles = d.files.map(f => ({ ...f, sel: true, st: f.already_converted ? 'Exists' : 'Ready' }));
+  renderQ();
+}
+
+function renderQ() {
+  const tb = document.getElementById('qBody');
+  if (mode === 'local') {
+    document.getElementById('qCnt').textContent = qFiles.filter(f=>f.sel).length;
+    if (!qFiles.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">No .dng files found.</td></tr>'; return; }
+    tb.innerHTML = qFiles.map((f,i) => `
+      <tr>
+        <td><input type="checkbox" ${f.sel?'checked':''} onchange="qFiles[${i}].sel=this.checked;document.getElementById('qCnt').textContent=qFiles.filter(x=>x.sel).length" /></td>
+        <td title="${f.path}">${f.name}</td>
+        <td>${f.size_bytes?fmt(f.size_bytes):'—'}</td>
+        <td><span class="pill ${f.st==='OK'||f.st==='Exists'?'done':f.st==='Converting...'?'work':f.st==='Failed'?'err':''}" id="st-${i}">${f.st}</span></td>
+      </tr>`).join('');
+  } else {
+    document.getElementById('qCnt').textContent = uFiles.length;
+    if (!uFiles.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Drop .dng files in the upload box.</td></tr>'; return; }
+    tb.innerHTML = uFiles.map(f => `<tr><td>✓</td><td>${f.name}</td><td>${fmt(f.size)}</td><td><span class="pill">Staged</span></td></tr>`).join('');
+  }
+}
+
+function selAll(v) { qFiles.forEach(f=>f.sel=v); renderQ(); }
+
+const dz = document.getElementById('drop');
+dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+dz.ondragleave = () => dz.classList.remove('over');
+dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); if(e.dataTransfer.files) stageFiles(e.dataTransfer.files); };
+
+function stageFiles(fl) {
+  uFiles = Array.from(fl).filter(f => f.name.toLowerCase().endsWith('.dng'));
+  document.getElementById('upInfo').textContent = `${uFiles.length} DNG file(s) ready to upload & convert.`;
+  renderQ();
+}
+
+async function startJob() {
+  const engine = document.getElementById('engSel').value;
+  const quality = parseInt(document.getElementById('qRng').value, 10);
+  const subsampling = document.getElementById('subSel').value;
+  const colorspace = document.getElementById('csSel').value;
+  const output_subfolder = document.getElementById('outSub').value.trim() || 'Converted_JPEG';
+  const max_workers = parseInt(document.getElementById('wrkSel').value, 10);
+  const auto_orient = document.getElementById('oriChk').checked;
+  const preserve_exif = document.getElementById('exifChk').checked;
+
+  document.getElementById('pBar').style.width = '0%';
+  document.getElementById('gWrap').innerHTML = '<div class="grid" id="gGrid"></div>';
+  document.getElementById('gCnt').textContent = '0';
+
+  try {
+    let res;
+    if (mode === 'local') {
+      const files = qFiles.filter(f=>f.sel).map(f=>f.path);
+      if (!files.length) return alert('Select at least one .dng file first.');
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').style.display = 'inline-flex';
+      res = await fetch('/api/jobs/start', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ files, engine, quality, subsampling, colorspace, auto_orient, preserve_exif, output_subfolder, max_workers })
+      });
+    } else {
+      if (!uFiles.length) return alert('Drop .dng files first.');
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('stopBtn').style.display = 'inline-flex';
+      const fd = new FormData();
+      uFiles.forEach(f => fd.append('files', f));
+      fd.append('engine', engine); fd.append('quality', quality); fd.append('subsampling', subsampling);
+      fd.append('colorspace', colorspace); fd.append('auto_orient', auto_orient); fd.append('preserve_exif', preserve_exif);
+      fd.append('max_workers', max_workers);
+      res = await fetch('/api/jobs/upload', { method:'POST', body: fd });
+    }
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'Job failed');
+    watchJob(d.job_id, d.total_files);
+  } catch (e) {
+    alert(e.message);
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').style.display = 'none';
+  }
+}
+
+function watchJob(id, total) {
+  jobId = id;
+  document.getElementById('sDone').textContent = `0 / ${total}`;
+  const t0 = performance.now();
+  const tm = setInterval(() => { if(!es) return clearInterval(tm); document.getElementById('sTime').textContent = ((performance.now()-t0)/1000).toFixed(1)+'s'; }, 200);
+  es = new EventSource(`/api/jobs/${id}/stream`);
+  es.onmessage = e => {
+    const { type, data } = JSON.parse(e.data);
+    if (type === 'file_started') {
+      document.getElementById('stTxt').textContent = `Converting ${data.filename}...`;
+      const i = qFiles.findIndex(f => f.path===data.source_path || f.name===data.filename);
+      if (i !== -1 && document.getElementById(`st-${i}`)) {
+        document.getElementById(`st-${i}`).className = 'pill work';
+        document.getElementById(`st-${i}`).textContent = 'Converting...';
+      }
+    } else if (type === 'file_completed') {
+      document.getElementById('pBar').style.width = Math.round((data.completed_count/data.total_files)*100)+'%';
+      document.getElementById('sDone').textContent = `${data.completed_count} / ${data.total_files}`;
+      document.getElementById('sOk').textContent = data.success_count;
+      document.getElementById('sErr').textContent = data.fail_count;
+      const r = data.result;
+      const i = qFiles.findIndex(f => f.path===r.source_path || f.name===r.filename);
+      if (i !== -1 && document.getElementById(`st-${i}`)) {
+        document.getElementById(`st-${i}`).className = 'pill ' + (r.success?'done':'err');
+        document.getElementById(`st-${i}`).textContent = r.success ? `OK (${r.duration_sec}s)` : 'Failed';
+      }
+      if (r.success) {
+        addCard(r);
+        document.getElementById('gCnt').textContent = data.success_count;
+        document.getElementById('zipBtn').style.display = 'inline-flex';
+        document.getElementById('openDirBtn').style.display = 'inline-flex';
+        lastOut = r.output_path;
+      }
+    } else if (type === 'job_finished') {
+      document.getElementById('stTxt').textContent = `Completed (${data.success_count} converted in ${data.elapsed_sec}s)`;
+      document.getElementById('sTime').textContent = data.elapsed_sec + 's';
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').style.display = 'none';
+      es.close(); es = null;
+    }
+  };
+}
+
+function addCard(r) {
+  const g = document.getElementById('gGrid');
+  const prev = `/api/preview?path=${encodeURIComponent(r.output_path)}&t=${Date.now()}`;
+  const dl = `/api/preview?path=${encodeURIComponent(r.output_path)}&download=true`;
+  const dim = r.width ? `${r.width}×${r.height}` : 'JPEG';
+  const el = document.createElement('div');
+  el.className = 'item';
+  el.innerHTML = `
+    <img class="thumb" src="${prev}" onclick="showModal('${prev}','${dl}','${r.output_filename} (${dim}, ${fmt(r.output_size_bytes)})')" />
+    <div class="meta">
+      <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.output_filename}</b>
+      <span style="color:var(--mut);">${dim} &bull; ${fmt(r.output_size_bytes)} &bull; ${r.duration_sec}s</span>
+      <div class="row">
+        <a class="btn btn-pri" style="flex:1;" href="${dl}" download="${r.output_filename}">⬇️ Save</a>
+        <button class="btn" style="flex:1;" onclick="reveal('${r.output_path.replace(/\\/g,'\\\\')}')">📂 Reveal</button>
+      </div>
+    </div>`;
+  g.prepend(el);
+}
+
+function showModal(img, dl, tit) {
+  document.getElementById('mImg').src = img;
+  document.getElementById('mDl').href = dl;
+  document.getElementById('mTit').textContent = tit;
+  document.getElementById('modal').classList.add('open');
+}
+
+async function cancelJob() { if(jobId) await fetch(`/api/jobs/${jobId}/cancel`, {method:'POST'}); }
+function dlZip() { if(jobId) location.href = `/api/download-zip/${jobId}`; }
+async function reveal(p) { await fetch('/api/open-explorer', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:p, select_file:true})}); }
+async function openOutDir() { if(lastOut) await fetch('/api/open-explorer', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:lastOut, select_file:false})}); }
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
