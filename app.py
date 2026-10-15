@@ -1,5 +1,5 @@
 """
-app.py Ã¢â‚¬â€ FastAPI Backend for High-Quality DNG to JPEG Studio
+app.py  FastAPI Backend for High-Quality DNG to JPEG Studio
 Bound strictly to 127.0.0.1 with non-blocking worker pool and SSE telemetry.
 """
 
@@ -57,7 +57,7 @@ class StartJobRequest(BaseModel):
     engine: str = "magick"
     quality: int = Field(default=98, ge=1, le=100)
     subsampling: str = "4:4:4"
-    colorspace: str = "sRGB"
+    colorspace: str = "sRGB"
     color_profile: str = "balanced"
     auto_orient: bool = True
     preserve_exif: bool = True
@@ -361,7 +361,7 @@ async def start_batch_job(req: StartJobRequest):
         engine=req.engine,
         quality=req.quality,
         subsampling=req.subsampling,
-        colorspace=req.colorspace,
+        colorspace=req.colorspace,
         color_profile=req.color_profile,
         auto_orient=req.auto_orient,
         preserve_exif=req.preserve_exif,
@@ -393,7 +393,7 @@ async def upload_and_convert(
     engine: str = Form("magick"),
     quality: int = Form(98),
     subsampling: str = Form("4:4:4"),
-    colorspace: str = Form("sRGB"),
+    colorspace: str = Form("sRGB"),
     color_profile: str = Form("balanced"),
     auto_orient: bool = Form(True),
     preserve_exif: bool = Form(True),
@@ -421,7 +421,7 @@ async def upload_and_convert(
         engine=engine,
         quality=max(1, min(100, int(quality))),
         subsampling=subsampling,
-        colorspace=colorspace,
+        colorspace=colorspace,
         color_profile=color_profile,
         auto_orient=auto_orient,
         preserve_exif=preserve_exif,
