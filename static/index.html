@@ -86,8 +86,8 @@ th { background:#111827; color:var(--mut); position:sticky; top:0; }
         <div class="grp">
           <label>Native Windows Explorer Dialog</label>
           <div class="g2">
-            <button class="btn" onclick="pickFolder()">📁 Browse Folder...</button>
-            <button class="btn" onclick="pickFiles()">🖼️ Select DNG Files...</button>
+            <button class="btn" onclick="pickFolder()">ðŸ“ Browse Folder...</button>
+            <button class="btn" onclick="pickFiles()">ðŸ–¼ï¸ Select DNG Files...</button>
           </div>
         </div>
         <div class="grp">
@@ -123,6 +123,16 @@ th { background:#111827; color:var(--mut); position:sticky; top:0; }
         </select>
       </div>
       <div class="grp">
+        <label>Adaptive Color Optimization (Zero-LUT Dynamic Tone)</label>
+        <select id="colProfSel">
+          <option value="balanced" selected>🌟 Auto-Balanced (Camera WB + Adaptive S-Curve / CLAHE)</option>
+          <option value="vibrant">🏞️ Vibrant / Outdoor (Insta360, DJI & Action Cams)</option>
+          <option value="portrait">👤 Natural / Portrait (Soft Skin Tone Protection)</option>
+          <option value="cinematic">🎬 Cinematic Filmic (Rich Blacks & Soft Highlights)</option>
+          <option value="none">⚪ Off / Flat Linear RAW</option>
+        </select>
+      </div>
+      <div class="grp">
         <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px;">
           <span>JPEG Quality</span><b id="qLbl" style="color:#818cf8;">98% (Near-Lossless)</b>
         </div>
@@ -148,7 +158,7 @@ th { background:#111827; color:var(--mut); position:sticky; top:0; }
       <label class="chk"><input type="checkbox" id="oriChk" checked /> Auto-orient via camera EXIF rotation</label>
       <label class="chk"><input type="checkbox" id="exifChk" checked /> Preserve camera EXIF metadata</label>
       <div class="row" style="margin-top:16px;">
-        <button class="btn btn-pri" style="width:100%;padding:11px;" id="startBtn" onclick="startJob()">⚡ Convert DNG Batch to High-Quality JPEG</button>
+        <button class="btn btn-pri" style="width:100%;padding:11px;" id="startBtn" onclick="startJob()">âš¡ Convert DNG Batch to High-Quality JPEG</button>
         <button class="btn btn-err" id="stopBtn" style="display:none;" onclick="cancelJob()">Stop</button>
       </div>
     </div>
@@ -183,8 +193,8 @@ th { background:#111827; color:var(--mut); position:sticky; top:0; }
       <div class="title">
         <span>Converted High-Quality JPEGs (<span id="gCnt">0</span>)</span>
         <div class="row">
-          <button class="btn" id="openDirBtn" style="display:none;" onclick="openOutDir()">📂 Open Output Folder</button>
-          <button class="btn btn-ok" id="zipBtn" style="display:none;" onclick="dlZip()">⬇️ Download All ZIP</button>
+          <button class="btn" id="openDirBtn" style="display:none;" onclick="openOutDir()">ðŸ“‚ Open Output Folder</button>
+          <button class="btn btn-ok" id="zipBtn" style="display:none;" onclick="dlZip()">â¬‡ï¸ Download All ZIP</button>
         </div>
       </div>
       <div id="gWrap"><div class="empty">Converted JPEGs will appear here in real time with preview and download options.</div></div>
@@ -196,7 +206,7 @@ th { background:#111827; color:var(--mut); position:sticky; top:0; }
   <img id="mImg" src="" />
   <div class="row" style="background:var(--card);padding:8px 16px;border-radius:99px;border:1px solid var(--bdr);align-items:center;">
     <span id="mTit" style="font-size:.84rem;font-weight:600;"></span>
-    <a id="mDl" class="btn btn-pri" download>⬇️ Download</a>
+    <a id="mDl" class="btn btn-pri" download>â¬‡ï¸ Download</a>
     <button class="btn" onclick="document.getElementById('modal').classList.remove('open')">Close</button>
   </div>
 </div><script>
@@ -217,9 +227,9 @@ async function init() {
     const r = await fetch('/api/system-info');
     const d = await r.json();
     document.getElementById('badges').innerHTML = `
-      <span class="badge ${d.has_magick?'ok':''}">${d.has_magick?'✓ ImageMagick 7 Ready':'✗ ImageMagick'}</span>
-      <span class="badge ${d.has_rawpy?'ok':''}">${d.has_rawpy?'✓ Python LibRaw Ready':'✗ rawpy'}</span>
-      <span class="badge ok">⚡ ${d.cpu_count} Threads</span>
+      <span class="badge ${d.has_magick?'ok':''}">${d.has_magick?'âœ“ ImageMagick 7 Ready':'âœ— ImageMagick'}</span>
+      <span class="badge ${d.has_rawpy?'ok':''}">${d.has_rawpy?'âœ“ Python LibRaw Ready':'âœ— rawpy'}</span>
+      <span class="badge ok">âš¡ ${d.cpu_count} Threads</span>
     `;
     if (d.discovered_folders && d.discovered_folders.length) {
       document.getElementById('discWrap').style.display = 'block';
@@ -229,7 +239,7 @@ async function init() {
         const b = document.createElement('button');
         b.className = 'chip';
         b.title = f.path;
-        b.textContent = `📂 ${f.name} (${f.count} DNG)`;
+        b.textContent = `ðŸ“‚ ${f.name} (${f.count} DNG)`;
         b.onclick = () => { document.getElementById('pathInp').value = f.path; scanPath(); };
         box.appendChild(b);
       });
@@ -275,13 +285,13 @@ function renderQ() {
       <tr>
         <td><input type="checkbox" ${f.sel?'checked':''} onchange="qFiles[${i}].sel=this.checked;document.getElementById('qCnt').textContent=qFiles.filter(x=>x.sel).length" /></td>
         <td title="${f.path}">${f.name}</td>
-        <td>${f.size_bytes?fmt(f.size_bytes):'—'}</td>
+        <td>${f.size_bytes?fmt(f.size_bytes):'â€”'}</td>
         <td><span class="pill ${f.st==='OK'||f.st==='Exists'?'done':f.st==='Converting...'?'work':f.st==='Failed'?'err':''}" id="st-${i}">${f.st}</span></td>
       </tr>`).join('');
   } else {
     document.getElementById('qCnt').textContent = uFiles.length;
     if (!uFiles.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Drop .dng files in the upload box.</td></tr>'; return; }
-    tb.innerHTML = uFiles.map(f => `<tr><td>✓</td><td>${f.name}</td><td>${fmt(f.size)}</td><td><span class="pill">Staged</span></td></tr>`).join('');
+    tb.innerHTML = uFiles.map(f => `<tr><td>âœ“</td><td>${f.name}</td><td>${fmt(f.size)}</td><td><span class="pill">Staged</span></td></tr>`).join('');
   }
 }
 
@@ -303,6 +313,7 @@ async function startJob() {
   const quality = parseInt(document.getElementById('qRng').value, 10);
   const subsampling = document.getElementById('subSel').value;
   const colorspace = document.getElementById('csSel').value;
+  const color_profile = document.getElementById('colProfSel').value;
   const output_subfolder = document.getElementById('outSub').value.trim() || 'Converted_JPEG';
   const max_workers = parseInt(document.getElementById('wrkSel').value, 10);
   const auto_orient = document.getElementById('oriChk').checked;
@@ -321,7 +332,7 @@ async function startJob() {
       document.getElementById('stopBtn').style.display = 'inline-flex';
       res = await fetch('/api/jobs/start', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ files, engine, quality, subsampling, colorspace, auto_orient, preserve_exif, output_subfolder, max_workers })
+        body: JSON.stringify({ files, engine, quality, subsampling, colorspace, color_profile, auto_orient, preserve_exif, output_subfolder, max_workers })
       });
     } else {
       if (!uFiles.length) return alert('Drop .dng files first.');
@@ -330,7 +341,7 @@ async function startJob() {
       const fd = new FormData();
       uFiles.forEach(f => fd.append('files', f));
       fd.append('engine', engine); fd.append('quality', quality); fd.append('subsampling', subsampling);
-      fd.append('colorspace', colorspace); fd.append('auto_orient', auto_orient); fd.append('preserve_exif', preserve_exif);
+      fd.append('colorspace', colorspace); fd.append('color_profile', color_profile); fd.append('auto_orient', auto_orient); fd.append('preserve_exif', preserve_exif);
       fd.append('max_workers', max_workers);
       res = await fetch('/api/jobs/upload', { method:'POST', body: fd });
     }
@@ -391,7 +402,7 @@ function addCard(r) {
   const g = document.getElementById('gGrid');
   const prev = `/api/preview?path=${encodeURIComponent(r.output_path)}&t=${Date.now()}`;
   const dl = `/api/preview?path=${encodeURIComponent(r.output_path)}&download=true`;
-  const dim = r.width ? `${r.width}×${r.height}` : 'JPEG';
+  const dim = r.width ? `${r.width}Ã—${r.height}` : 'JPEG';
   const el = document.createElement('div');
   el.className = 'item';
   el.innerHTML = `
@@ -400,8 +411,8 @@ function addCard(r) {
       <b style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.output_filename}</b>
       <span style="color:var(--mut);">${dim} &bull; ${fmt(r.output_size_bytes)} &bull; ${r.duration_sec}s</span>
       <div class="row">
-        <a class="btn btn-pri" style="flex:1;" href="${dl}" download="${r.output_filename}">⬇️ Save</a>
-        <button class="btn" style="flex:1;" onclick="reveal('${r.output_path.replace(/\\/g,'\\\\')}')">📂 Reveal</button>
+        <a class="btn btn-pri" style="flex:1;" href="${dl}" download="${r.output_filename}">â¬‡ï¸ Save</a>
+        <button class="btn" style="flex:1;" onclick="reveal('${r.output_path.replace(/\\/g,'\\\\')}')">ðŸ“‚ Reveal</button>
       </div>
     </div>`;
   g.prepend(el);

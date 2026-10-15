@@ -156,7 +156,7 @@ set "IN_FILE=%~1"
 set "OUT_FILE=%~2"
 
 <nul set /p "=  -> Converting %~nx1 ... "
-%MAGICK_CMD% "%IN_FILE%[0]" -auto-orient -colorspace sRGB -sampling-factor 4:4:4 -quality %JPEG_QUALITY% "%OUT_FILE%"
+%MAGICK_CMD% "%IN_FILE%[0]" -auto-orient -colorspace sRGB -auto-level -sigmoidal-contrast 3x50%% -modulate 100,112,100 -sampling-factor 4:4:4 -quality %JPEG_QUALITY% "%OUT_FILE%"
 if %ERRORLEVEL% equ 0 (
     echo [OK]
     set /a TOTAL_SUCCESS+=1

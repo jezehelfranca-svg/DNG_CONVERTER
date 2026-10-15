@@ -1,5 +1,5 @@
 """
-app.py — FastAPI Backend for High-Quality DNG to JPEG Studio
+app.py Ã¢â‚¬â€ FastAPI Backend for High-Quality DNG to JPEG Studio
 Bound strictly to 127.0.0.1 with non-blocking worker pool and SSE telemetry.
 """
 
@@ -58,6 +58,7 @@ class StartJobRequest(BaseModel):
     quality: int = Field(default=98, ge=1, le=100)
     subsampling: str = "4:4:4"
     colorspace: str = "sRGB"
+    color_profile: str = "balanced"
     auto_orient: bool = True
     preserve_exif: bool = True
     output_subfolder: str = "Converted_JPEG"
@@ -361,6 +362,7 @@ async def start_batch_job(req: StartJobRequest):
         quality=req.quality,
         subsampling=req.subsampling,
         colorspace=req.colorspace,
+        color_profile=req.color_profile,
         auto_orient=req.auto_orient,
         preserve_exif=req.preserve_exif,
         output_subfolder=req.output_subfolder.strip() or "Converted_JPEG",
@@ -392,6 +394,7 @@ async def upload_and_convert(
     quality: int = Form(98),
     subsampling: str = Form("4:4:4"),
     colorspace: str = Form("sRGB"),
+    color_profile: str = Form("balanced"),
     auto_orient: bool = Form(True),
     preserve_exif: bool = Form(True),
     max_workers: int = Form(3),
@@ -419,6 +422,7 @@ async def upload_and_convert(
         quality=max(1, min(100, int(quality))),
         subsampling=subsampling,
         colorspace=colorspace,
+        color_profile=color_profile,
         auto_orient=auto_orient,
         preserve_exif=preserve_exif,
         output_subfolder="Converted_JPEG",
