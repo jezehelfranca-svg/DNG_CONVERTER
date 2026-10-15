@@ -25,3 +25,7 @@ Converted_JPEG/
 Thumbs.db
 .vscode/
 .idea/
+# Rust
+rust/target/
+target/
+**/*.rs.bk
