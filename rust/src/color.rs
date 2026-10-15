@@ -129,3 +129,38 @@ pub fn apply_adaptive_grading(img: &mut RgbImage, profile: ColorProfile) {
         pixel[2] = linear_to_srgb(b_out);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_color_profile_parsing() {
+        assert_eq!(ColorProfile::from_str_loose("vibrant"), ColorProfile::Vibrant);
+        assert_eq!(ColorProfile::from_str_loose("PORTRAIT"), ColorProfile::Portrait);
+        assert_eq!(ColorProfile::from_str_loose("cinematic"), ColorProfile::Cinematic);
+        assert_eq!(ColorProfile::from_str_loose("none"), ColorProfile::None);
+        assert_eq!(ColorProfile::from_str_loose("flat"), ColorProfile::None);
+        assert_eq!(ColorProfile::from_str_loose("unknown"), ColorProfile::Balanced);
+    }
+
+    #[test]
+    fn test_srgb_roundtrip() {
+        for v in [0u8, 50, 128, 200, 255] {
+            let lin = srgb_to_linear(v);
+            let back = linear_to_srgb(lin);
+            assert_eq!(v, back);
+        }
+    }
+
+    #[test]
+    fn test_apply_color_profile() {
+        let mut img = RgbImage::new(4, 4);
+        for pixel in img.pixels_mut() {
+            *pixel = image::Rgb([128, 128, 128]);
+        }
+        apply_adaptive_grading(&mut img, ColorProfile::Balanced);
+        assert_eq!(img.width(), 4);
+        assert_eq!(img.height(), 4);
+    }
+}

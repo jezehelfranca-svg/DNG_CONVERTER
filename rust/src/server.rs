@@ -119,6 +119,47 @@ fn parse_multipart(body: &[u8], boundary: &[u8]) -> (Vec<UploadedFile>, HashMap<
     (files, fields)
 }
 
+
+fn discover_dng_folders() -> Vec<serde_json::Value> {
+    let mut candidate_roots = Vec::new();
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        let p = PathBuf::from(profile);
+        candidate_roots.push(p.join("OneDrive").join("Pictures"));
+        candidate_roots.push(p.join("Pictures"));
+        candidate_roots.push(p.join("Downloads"));
+        candidate_roots.push(p.join("Desktop"));
+    }
+    candidate_roots.push(PathBuf::from("."));
+
+    let mut map: HashMap<PathBuf, usize> = HashMap::new();
+    for root in candidate_roots {
+        if !root.is_dir() { continue; }
+        for entry in walkdir::WalkDir::new(&root).max_depth(3).into_iter().filter_map(|e| e.ok()) {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(ext) = p.extension() {
+                    if ext.to_string_lossy().eq_ignore_ascii_case("dng") {
+                        if let Some(parent) = p.parent() {
+                            *map.entry(parent.to_path_buf()).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut res = Vec::new();
+    for (folder, count) in map {
+        let name = folder.file_name().unwrap_or_default().to_string_lossy().to_string();
+        res.push(serde_json::json!({
+            "name": if name.is_empty() { "Current Directory".to_string() } else { name },
+            "path": folder.to_string_lossy(),
+            "count": count,
+        }));
+    }
+    res
+}
+
 pub fn run_server(port: u16) {
     let addr = format!("127.0.0.1:{}", port);
     let server = match Server::http(&addr) {
@@ -155,13 +196,75 @@ pub fn run_server(port: u16) {
         if method == Method::Get && url.starts_with("/api/system-info") {
             let has_magick = Command::new("magick").arg("-version").output().is_ok();
             let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+            let discovered = discover_dng_folders();
             let json = serde_json::json!({
                 "has_magick": has_magick,
                 "has_rawpy": false,
                 "cpu_count": cpus,
                 "engine_type": "Rust SIMD + Oklab Color Grading",
+                "discovered_folders": discovered,
             });
             let resp = Response::from_string(json.to_string())
+                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
+            let _ = request.respond(resp);
+            continue;
+        }
+
+        if method == Method::Post && url.starts_with("/api/pick-folder") {
+            let out = Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Select Folder Containing DNG Files'; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath }",
+                ])
+                .output();
+
+            let folder_path = match out {
+                Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                Err(_) => String::new(),
+            };
+
+            let resp_json = serde_json::json!({
+                "path": folder_path,
+            });
+            let resp = Response::from_string(resp_json.to_string())
+                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
+            let _ = request.respond(resp);
+            continue;
+        }
+
+        if method == Method::Post && url.starts_with("/api/pick-files") {
+            let out = Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    "[System.Reflection.Assembly]::LoadWithPartialName('System.windows.forms') | Out-Null; $d = New-Object System.Windows.Forms.OpenFileDialog; $d.Multiselect = $true; $d.Filter = 'DNG Files (*.dng)|*.dng;*.DNG|All Files (*.*)|*.*'; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { $d.FileNames -join '|' }",
+                ])
+                .output();
+
+            let files: Vec<String> = match out {
+                Ok(o) => {
+                    let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if s.is_empty() {
+                        Vec::new()
+                    } else {
+                        s.split('|').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect()
+                    }
+                }
+                Err(_) => Vec::new(),
+            };
+
+            let resp_json = serde_json::json!({
+                "files": files,
+            });
+            let resp = Response::from_string(resp_json.to_string())
+                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
+            let _ = request.respond(resp);
+            continue;
+        }
+
+        if method == Method::Post && url.starts_with("/api/jobs/") && url.contains("/cancel") {
+            let resp = Response::from_string(r#"{"status":"cancelled"}"#)
                 .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
             let _ = request.respond(resp);
             continue;
