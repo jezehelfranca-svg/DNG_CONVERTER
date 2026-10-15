@@ -1,11 +1,15 @@
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
+use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io::{Cursor, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rayon::prelude::*;
 use tiny_http::{Header, Method, Response, Server, StatusCode};
+use zip::write::SimpleFileOptions;
+use zip::ZipWriter;
 
 use crate::color::ColorProfile;
 use crate::engine::{convert_single_dng, ConversionConfig, ConversionResult};
@@ -49,6 +53,72 @@ struct ExplorerRequest {
     select_file: bool,
 }
 
+struct UploadedFile {
+    filename: String,
+    data: Vec<u8>,
+}
+
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| window == needle)
+}
+
+fn extract_attr(line: &str, attr: &str) -> Option<String> {
+    let key = format!("{}=\"", attr);
+    if let Some(idx) = line.find(&key) {
+        let rest = &line[idx + key.len()..];
+        if let Some(end) = rest.find('"') {
+            return Some(rest[..end].to_string());
+        }
+    }
+    None
+}
+
+fn parse_multipart(body: &[u8], boundary: &[u8]) -> (Vec<UploadedFile>, HashMap<String, String>) {
+    let mut files = Vec::new();
+    let mut fields = HashMap::new();
+
+    let full_boundary = [b"--", boundary].concat();
+
+    let mut start_idx = 0;
+    while let Some(pos) = find_subsequence(&body[start_idx..], &full_boundary) {
+        let part_start = start_idx + pos + full_boundary.len();
+        if part_start + 2 > body.len() { break; }
+        let actual_start = if &body[part_start..part_start + 2] == b"\r\n" { part_start + 2 } else { part_start };
+
+        let next_bound = match find_subsequence(&body[actual_start..], &full_boundary) {
+            Some(p) => actual_start + p,
+            None => body.len(),
+        };
+
+        let part_bytes = &body[actual_start..next_bound];
+        if let Some(header_end) = find_subsequence(part_bytes, b"\r\n\r\n") {
+            let header_str = String::from_utf8_lossy(&part_bytes[..header_end]);
+            let mut content = &part_bytes[header_end + 4..];
+            if content.ends_with(b"\r\n") {
+                content = &content[..content.len() - 2];
+            }
+
+            if let Some(disp) = header_str.lines().find(|l| l.to_lowercase().starts_with("content-disposition")) {
+                let name = extract_attr(disp, "name");
+                let filename = extract_attr(disp, "filename");
+
+                if let Some(fname) = filename {
+                    if !fname.is_empty() {
+                        files.push(UploadedFile {
+                            filename: fname,
+                            data: content.to_vec(),
+                        });
+                    }
+                } else if let Some(n) = name {
+                    fields.insert(n, String::from_utf8_lossy(content).trim().to_string());
+                }
+            }
+        }
+        start_idx = next_bound;
+    }
+    (files, fields)
+}
+
 pub fn run_server(port: u16) {
     let addr = format!("127.0.0.1:{}", port);
     let server = match Server::http(&addr) {
@@ -58,6 +128,8 @@ pub fn run_server(port: u16) {
             return;
         }
     };
+
+    let last_converted_files: Arc<Mutex<Vec<PathBuf>>> = Arc::new(Mutex::new(Vec::new()));
 
     println!("============================================================================");
     println!("  DNG to High-Quality JPEG Studio (Rust Engine)");
@@ -142,6 +214,7 @@ pub fn run_server(port: u16) {
             }
         }
 
+        // Endpoint: Start conversion of existing disk files
         if method == Method::Post && url.starts_with("/api/jobs/start") {
             let mut body = String::new();
             if request.as_reader().read_to_string(&mut body).is_ok() {
@@ -154,7 +227,6 @@ pub fn run_server(port: u16) {
                         allow_magick_fallback: true,
                     };
 
-                    // Run parallel conversion with Rayon
                     let results: Vec<ConversionResult> = req.files.par_iter().map(|file_str| {
                         let src_path = Path::new(file_str);
                         let stem = src_path.file_stem().unwrap_or_default().to_string_lossy();
@@ -164,6 +236,15 @@ pub fn run_server(port: u16) {
 
                         convert_single_dng(src_path, &out_path, &cfg)
                     }).collect();
+
+                    if let Ok(mut list) = last_converted_files.lock() {
+                        list.clear();
+                        for r in &results {
+                            if r.success {
+                                list.push(PathBuf::from(&r.output_path));
+                            }
+                        }
+                    }
 
                     let resp_json = serde_json::json!({
                         "job_id": "rust_job",
@@ -178,12 +259,131 @@ pub fn run_server(port: u16) {
             }
         }
 
+        // Endpoint: Browser Drag-and-Drop file upload & conversion
+        if method == Method::Post && url.starts_with("/api/jobs/upload") {
+            let mut boundary = Vec::new();
+            for h in request.headers() {
+                if h.field.as_str().as_str().eq_ignore_ascii_case("content-type") {
+                    let val = h.value.as_str();
+                    if let Some(pos) = val.find("boundary=") {
+                        boundary = val[pos + 9..].trim().as_bytes().to_vec();
+                    }
+                }
+            }
+
+            let mut body_bytes = Vec::new();
+            let _ = request.as_reader().read_to_end(&mut body_bytes);
+
+            if !boundary.is_empty() && !body_bytes.is_empty() {
+                let (uploaded_files, fields) = parse_multipart(&body_bytes, &boundary);
+
+                let quality: u8 = fields.get("quality").and_then(|v| v.parse().ok()).unwrap_or(98);
+                let color_prof = fields.get("color_profile").cloned().unwrap_or_else(|| "balanced".to_string());
+                let auto_orient: bool = fields.get("auto_orient").map(|v| v != "false").unwrap_or(true);
+
+                let cfg = ConversionConfig {
+                    quality: quality.clamp(1, 100),
+                    color_profile: ColorProfile::from_str_loose(&color_prof),
+                    auto_orient,
+                    output_subfolder: "Converted_JPEG".to_string(),
+                    allow_magick_fallback: true,
+                };
+
+                let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
+                let upload_batch_dir = PathBuf::from("workspace_uploads").join(format!("batch_{}", ts));
+                let _ = fs::create_dir_all(&upload_batch_dir);
+
+                let mut saved_paths = Vec::new();
+                for uf in uploaded_files {
+                    if uf.filename.to_lowercase().ends_with(".dng") {
+                        let save_path = upload_batch_dir.join(&uf.filename);
+                        if let Ok(mut f) = File::create(&save_path) {
+                            let _ = f.write_all(&uf.data);
+                            saved_paths.push(save_path);
+                        }
+                    }
+                }
+
+                let results: Vec<ConversionResult> = saved_paths.par_iter().map(|src_path| {
+                    let stem = src_path.file_stem().unwrap_or_default().to_string_lossy();
+                    let out_dir = upload_batch_dir.join(&cfg.output_subfolder);
+                    let out_path = out_dir.join(format!("{}.jpg", stem));
+
+                    convert_single_dng(src_path, &out_path, &cfg)
+                }).collect();
+
+                if let Ok(mut list) = last_converted_files.lock() {
+                    list.clear();
+                    for r in &results {
+                        if r.success {
+                            list.push(PathBuf::from(&r.output_path));
+                        }
+                    }
+                }
+
+                let resp_json = serde_json::json!({
+                    "job_id": format!("upload_{}", ts),
+                    "total_files": results.len(),
+                    "results": results,
+                });
+                let resp = Response::from_string(resp_json.to_string())
+                    .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
+                let _ = request.respond(resp);
+                continue;
+            } else {
+                let resp = Response::from_string(r#"{"detail":"Invalid multipart payload or missing boundary"}"#)
+                    .with_status_code(StatusCode(400))
+                    .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
+                let _ = request.respond(resp);
+                continue;
+            }
+        }
+
+        // Endpoint: Download all as ZIP
+        if method == Method::Get && url.starts_with("/api/download-zip") {
+            let files_to_zip: Vec<PathBuf> = if let Ok(list) = last_converted_files.lock() {
+                list.clone()
+            } else {
+                Vec::new()
+            };
+
+            let mut zip_buffer = Cursor::new(Vec::new());
+            {
+                let mut zip = ZipWriter::new(&mut zip_buffer);
+                let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+                for fpath in &files_to_zip {
+                    if fpath.is_file() {
+                        let name = fpath.file_name().unwrap_or_default().to_string_lossy();
+                        if let Ok(mut src_f) = File::open(fpath) {
+                            let mut data = Vec::new();
+                            if src_f.read_to_end(&mut data).is_ok() {
+                                let _ = zip.start_file(name, options);
+                                let _ = zip.write_all(&data);
+                            }
+                        }
+                    }
+                }
+                let _ = zip.finish();
+            }
+
+            let resp_data = zip_buffer.into_inner();
+            let resp = Response::from_data(resp_data)
+                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/zip"[..]).unwrap())
+                .with_header(Header::from_bytes(&b"Content-Disposition"[..], &b"attachment; filename=\"Converted_JPEG.zip\""[..]).unwrap());
+            let _ = request.respond(resp);
+            continue;
+        }
+
+        // Endpoint: Image Preview
         if method == Method::Get && url.starts_with("/api/preview") {
             if let Some(query) = url.split('?').nth(1) {
                 let params: Vec<(&str, &str)> = query.split('&').filter_map(|p| {
                     let mut parts = p.split('=');
                     Some((parts.next()?, parts.next()?))
                 }).collect();
+
+                let is_download = params.iter().any(|(k, v)| *k == "download" && *v == "true");
 
                 if let Some((_, raw_path)) = params.iter().find(|(k, _)| *k == "path") {
                     let decoded_path = raw_path.replace("%2F", "/").replace("%5C", "\\").replace("%20", " ");
@@ -192,8 +392,15 @@ pub fn run_server(port: u16) {
                         if let Ok(mut f) = File::open(path) {
                             let mut buf = Vec::new();
                             if f.read_to_end(&mut buf).is_ok() {
-                                let resp = Response::from_data(buf)
+                                let mut resp = Response::from_data(buf)
                                     .with_header(Header::from_bytes(&b"Content-Type"[..], &b"image/jpeg"[..]).unwrap());
+                                if is_download {
+                                    let fname = path.file_name().unwrap_or_default().to_string_lossy();
+                                    resp.add_header(Header::from_bytes(
+                                        &b"Content-Disposition"[..],
+                                        format!("attachment; filename=\"{}\"", fname).as_bytes()
+                                    ).unwrap());
+                                }
                                 let _ = request.respond(resp);
                                 continue;
                             }
@@ -225,6 +432,10 @@ pub fn run_server(port: u16) {
         }
 
         // 404 Fallback
-        let _ = request.respond(Response::from_string("Not Found").with_status_code(StatusCode(404)));
+        let _ = request.respond(
+            Response::from_string(r#"{"error":"Not Found"}"#)
+                .with_status_code(StatusCode(404))
+                .with_header(Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap())
+        );
     }
 }
